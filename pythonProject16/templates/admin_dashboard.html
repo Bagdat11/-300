@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div>📅 {{ today }}</div>
+    <div><a class="link" href="/admin-logout">Шығу</a></div>
+  </div>
+
+  <div class="container wide">
+    <div class="card">
+      <h2>Admin Dashboard</h2>
+
+      <div class="stats">
+        <div class="chip green">Келді: {{ present_count }}</div>
+        <div class="chip red">Келмеді: {{ absent_count }}</div>
+      </div>
+
+      <form class="filters" method="get" action="/admin-dashboard">
+        <!-- ✅ КҮН ТАҢДАУ -->
+        <input class="input" type="date" name="day" value="{{ day }}" />
+
+        <select class="input" name="group_id">
+          <option value="">Барлық топ</option>
+          {% for g in groups %}
+            <option value="{{ g.group_id }}" {% if group_id == g.group_id %}selected{% endif %}>
+              {{ g.group_name }}
+            </option>
+          {% endfor %}
+        </select>
+
+        <input class="input" name="q" placeholder="Поиск: аты/логин" value="{{ q }}" />
+        <button class="btn small" type="submit">Search</button>
+      </form>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student</th>
+              <th>Login</th>
+              <th>Status</th>
+              <th>Campus</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+              <tr class="{% if r.present %}row-green{% else %}row-red{% endif %}">
+                <td>{{ loop.index }}</td>
+                <td>{{ r.fullname }}</td>
+                <td>{{ r.loginname }}</td>
+                <td>
+  <button type="button"
+          class="btn small green"
+          onclick="markAttendance('{{ r.student_id }}', 'present')">
+    ✅ Келді
+  </button>
+
+  <button type="button"
+          class="btn small red"
+          onclick="markAttendance('{{ r.student_id }}', 'absent')">
+    ❌ Келмеді
+  </button>
+</td>
+                <td>{{ r.campus_name }}</td>
+                <td>{{ r.attend_time }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

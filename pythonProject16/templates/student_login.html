@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="kk" data-title-key="app_title_student">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Студент кіру</title>
+  <link rel="stylesheet" href="/static/css/styles.css?v=5" />
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+
+      <!-- Header -->
+      <div class="card-header">
+        <div class="brand">
+          <img class="brand-logo" src="/static/img/emblem.png" alt="emblem">
+          <div class="brand-text">
+            <div class="brand-title" data-i18n="college_name">Талдықорған жоғары политехникалық колледжі</div>
+            <div class="brand-subtitle" data-i18n="student_subtitle">Студенттің кіру беті</div>
+          </div>
+        </div>
+
+        <div class="lang-box">
+          <span class="lang-label" data-i18n="lang_label">Тіл</span>
+          <select id="langSelect" class="lang-select">
+            <option value="kk">Қазақша</option>
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+
+      <h2 class="form-title" data-i18n="h_student_login">Кіру</h2>
+
+      {% if msg %}
+        <div class="alert">{{ msg }}</div>
+      {% endif %}
+
+      <form method="post" action="/student-login">
+        <label class="label" data-i18n="label_login">Логин</label>
+        <input class="input" name="login" data-i18n-placeholder="ph_login" placeholder="Логин" required />
+
+        <label class="label" data-i18n="label_password">Құпиясөз</label>
+        <input class="input" name="password" data-i18n-placeholder="ph_password" placeholder="Құпиясөз" type="password" required />
+
+        <input type="hidden" name="device_id" id="device_id"/>
+
+        <button class="btn btn-primary" type="submit" data-i18n="btn_enter">КІРУ</button>
+      </form>
+
+      <div class="links">
+        <a class="btn btn-secondary" href="/admin-login" data-i18n="link_admin">🔒 Админ кіру</a>
+      </div>
+
+      <div class="footer">© College Attendance</div>
+    </div>
+  </div>
+
+  <script src="/static/js/main.js"></script>
+  <script src="/static/js/i18n.js"></script>
+  <script>
+    document.getElementById("device_id").value = getOrCreateDeviceId();
+  </script>
+</body>
+</html>

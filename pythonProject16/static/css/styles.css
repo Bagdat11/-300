@@ -1,0 +1,227 @@
+:root{
+  --bg1:#eef2f7;
+  --bg2:#f7f9fc;
+  --card:#ffffff;
+  --text:#111827;
+  --muted:#6b7280;
+  --border:#e5e7eb;
+  --shadow: 0 18px 45px rgba(17,24,39,.12);
+
+  --header:#243238;
+  --headerText:#ffffff;
+  --headerMuted:#d6dde3;
+
+  --primary:#2563eb;
+  --primaryHover:#1d4ed8;
+
+  --success:#16a34a;
+  --danger:#ef4444;
+}
+
+/* ===== BASE ===== */
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  color:var(--text);
+  background: radial-gradient(1200px 600px at 20% 10%, #ffffff 0%, var(--bg1) 45%, var(--bg2) 100%);
+}
+
+/* ===== LOGIN / STUDENT CENTER ===== */
+.container{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:22px;
+}
+
+/* ===== ADMIN FIX ===== */
+.container.wide{
+  display:block !important;
+  padding:20px 40px;
+}
+
+.container.wide .card{
+  width:100%;
+  max-width:1200px;
+  margin:0 auto;
+}
+
+/* ===== CARD ===== */
+.card{
+  width:440px;
+  max-width:100%;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+/* ===== HEADER ===== */
+.card-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:16px;
+  background:linear-gradient(180deg,#2a3a41 0%,var(--header) 100%);
+}
+
+.brand{ display:flex; gap:12px; align-items:center; }
+
+.brand-logo{
+  width:60px;
+  height:60px;
+  border-radius:12px;
+}
+
+.brand-title{
+  color:white;
+  font-weight:800;
+  font-size:14px;
+}
+
+.brand-subtitle{
+  color:#cbd5e1;
+  font-size:12px;
+}
+
+/* ===== INPUT ===== */
+.input{
+  width:calc(100% - 36px);
+  margin:0 18px 8px;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--border);
+}
+
+/* ===== BUTTON ===== */
+.btn{
+  width:calc(100% - 36px);
+  margin:10px 18px;
+  padding:12px;
+  border-radius:12px;
+  border:none;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.btn-primary{
+  background:var(--primary);
+  color:white;
+}
+
+.btn-primary:hover{
+  background:var(--primaryHover);
+}
+
+/* ===== SMALL BUTTONS (ADMIN) ===== */
+.btn.small{
+  width:auto;
+  padding:6px 10px;
+  font-size:12px;
+  border-radius:8px;
+}
+
+.btn.green{
+  background:var(--success);
+  color:white;
+}
+
+.btn.green:hover{
+  background:#15803d;
+}
+
+.btn.red{
+  background:var(--danger);
+  color:white;
+}
+
+.btn.red:hover{
+  background:#dc2626;
+}
+
+/* ===== LINKS ===== */
+.link{
+  color:#93c5fd;
+  text-decoration:none;
+  font-weight:700;
+}
+
+.link:hover{ text-decoration:underline; }
+
+/* ===== TOPBAR ===== */
+.topbar{
+  display:flex;
+  justify-content:space-between;
+  padding:12px 16px;
+  background:#111827;
+  color:white;
+}
+
+/* ===== TABLE ===== */
+.table-wrap{
+  margin-top:20px;
+  background:white;
+  border-radius:12px;
+  overflow:auto;
+  padding:10px;
+}
+
+.table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.table th,
+.table td{
+  padding:10px;
+  border-bottom:1px solid #eee;
+}
+
+.row-green{
+  background: rgba(22,163,74,.1);
+}
+
+.row-red{
+  background: rgba(239,68,68,.1);
+}
+
+/* ===== STATS ===== */
+.stats{
+  display:flex;
+  gap:10px;
+  margin:10px 0;
+}
+
+.chip{
+  padding:8px 12px;
+  border-radius:999px;
+  font-weight:800;
+}
+
+.chip.green{
+  background: rgba(22,163,74,.2);
+}
+
+.chip.red{
+  background: rgba(239,68,68,.2);
+}
+
+/* ===== FOOTER ===== */
+.footer{
+  text-align:center;
+  font-size:12px;
+  color:#6b7280;
+  margin:10px 0;
+}
+
+/* ===== MOBILE ===== */
+@media (max-width:600px){
+  .container.wide{
+    padding:10px;
+  }
+}

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Result</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div>👤 {{ student_name }}</div>
+    <div><a class="link" href="/attend">Артқа</a></div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2>Нәтиже</h2>
+      {% if present %}
+        <div class="ok">✅ Тіркелді</div>
+        <p><b>Кампус:</b> {{ campus_name }}</p>
+        <p><b>Уақыты:</b> {{ attend_time }}</p>
+      {% else %}
+        <div class="bad">❌ Бүгін тіркелмеген</div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

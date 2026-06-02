@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Attend</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div>👤 {{ student_name }}</div>
+    <div><a class="link" href="/student-logout">Шығу</a></div>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2>Сабаққа тіркелу</h2>
+
+      {% if msg %}
+        <div class="alert">{{ msg }}</div>
+      {% endif %}
+
+      <form id="attendForm" method="post" action="/attend">
+        <label class="label">Кампус таңдаңыз</label>
+        <select class="input" name="campus_id" required>
+          {% for c in campuses %}
+            <option value="{{ c.id }}">{{ c.name }} (радиус: {{ c.radius_m }}м)</option>
+          {% endfor %}
+        </select>
+
+        <input type="hidden" name="lat" id="lat"/>
+        <input type="hidden" name="lng" id="lng"/>
+        <input type="hidden" name="device_id" id="device_id"/>
+
+        <button class="btn" type="button" onclick="submitAttend()">Келдім ✅</button>
+      </form>
+
+      <p class="hint">Ескерту: геолокацияға рұқсат беріңіз.</p>
+    </div>
+  </div>
+
+  <script src="/static/js/main.js"></script>
+  <script>
+    document.getElementById("device_id").value = getOrCreateDeviceId();
+  </script>
+</body>
+</html>
