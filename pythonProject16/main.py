@@ -140,7 +140,13 @@ def student_login(
 
     db_device = st.get("device_id")
     if not db_device:
-        supabase.table("student").update({"device_id": device_id}).eq("studentid", st["studentid"]).execute()
+        try:
+            supabase.table("student").update({"device_id": device_id}).eq("studentid", st["studentid"]).execute()
+        except Exception:
+            return RedirectResponse(
+                "/student-login?msg=Бұл%20құрылғы%20басқа%20студенттің%20аккаунтына%20байланған!",
+                status_code=302
+            )
     else:
         if db_device != device_id:
             return RedirectResponse(
