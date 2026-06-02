@@ -294,7 +294,7 @@ def attend_result(request: Request):
                 campus_name = c[0]["name"]
 
     
-   return templates.TemplateResponse(
+    return templates.TemplateResponse(
         request=request,
         name="attend_result.html",
         context={
