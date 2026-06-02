@@ -111,7 +111,8 @@ def home():
 
 @app.get("/student-login", response_class=HTMLResponse)
 def student_login_page(request: Request, msg: str = ""):
-    return templates.TemplateResponse("student_login.html", {"request": request})
+    # Жаңа FastAPI нұсқаларына арналған қауіпсіз формат:
+    return templates.TemplateResponse(request=request, name="student_login.html", context={"msg": msg})
 
 
 @app.post("/student-login")
@@ -303,8 +304,7 @@ def attend_result(request: Request):
 
 @app.get("/admin-login", response_class=HTMLResponse)
 def admin_login_page(request: Request, msg: str = ""):
-    return templates.TemplateResponse("admin_login.html", {"request": request, "msg": msg})
-
+    return templates.TemplateResponse(request=request, name="admin_login.html", context={"msg": msg})
 
 @app.post("/admin-login")
 def admin_login(request: Request, login: str = Form(...), password: str = Form(...)):
