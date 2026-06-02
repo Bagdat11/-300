@@ -293,13 +293,17 @@ def attend_result(request: Request):
             if c:
                 campus_name = c[0]["name"]
 
-    return templates.TemplateResponse("attend_result.html", {
-        "request": request,
-        "student_name": request.session.get("student_name", ""),
-        "attend_time": attend_time,
-        "campus_name": campus_name,
-        "present": present
-    })
+    
+   return templates.TemplateResponse(
+        request=request,
+        name="attend_result.html",
+        context={
+            "student_name": request.session.get("student_name", ""),
+            "attend_time": attend_time,
+            "campus_name": campus_name,
+            "present": present
+        }
+    )
 
 
 @app.get("/admin-login", response_class=HTMLResponse)
@@ -393,14 +397,18 @@ def admin_dashboard(
             "campus_name": campus_name,
             "attend_time": attend_time
         })
-    return templates.TemplateResponse("admin_dashboard.html", {
-        "request": request,
-        "groups": groups,
-        "group_id": gid,
-        "q": q,
-        "day": selected_day,
-        "today": selected_day,
-        "present_count": present_count,
-        "absent_count": absent_count,
-        "rows": rows
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_dashboard.html",
+        context={
+            "groups": groups,
+            "group_id": gid,
+            "q": q,
+            "day": selected_day,
+            "today": selected_day,
+            "present_count": present_count,
+            "absent_count": absent_count,
+            "rows": rows
+        }
+    )
+
