@@ -174,20 +174,18 @@ def attend_page(request: Request, msg: str = ""):
     if not sid:
         return RedirectResponse("/student-login", status_code=302)
 
-    campuses = (
-                   supabase.table("campuses")
-                   .select("id, name, lat, lng, radius_m")
-                   .order("id")
-                   .execute()
-                   .data
-               ) or []
+    res = supabase.table("campuses").select("id, name, lat, lng, radius_m").order("id").execute()
+    campuses = res.data or []
 
-    return templates.TemplateResponse("attend.html", {
-        "request": request,
-        "campuses": campuses,
-        "msg": msg,
-        "student_name": request.session.get("student_name", "")
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="attend.html",
+        context={
+            "campuses": campuses,
+            "msg": msg,
+            "student_name": request.session.get("student_name", "")
+        }
+    )
 
 
 @app.post("/attend")
