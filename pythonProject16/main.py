@@ -31,6 +31,17 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 
+# -------------------- БӨЛІМДЕР МЕН ТОПТАР КАРТАСЫ --------------------
+# Қай топтың ID-і (group_id) қай бөлімге жататынын осы жерде реттейміз.
+# Төмендегі сандарды (ID) өзіңіздің базаңыздағы нақты топ ID-лерімен ауыстырыңыз!
+DEPARTMENT_MAP = {
+    "IT": [1, 2, 3, 4],                 # IT бөліміне кіретін топтардың ID-лері
+    "Радио": [5, 6, 7],                 # Радио бөліміне кіретін топтардың ID-лері
+    "Желілік технология": [8, 9, 10],   # Желілік технология топтарының ID-лері
+    "Құрылыс": [11, 12, 13]             # Құрылыс бөлімінің топ ID-лері
+}
+
+
 # -------------------- HELPERS --------------------
 
 def haversine_m(lat1, lng1, lat2, lng2) -> float:
@@ -64,9 +75,10 @@ def safe_int(v: Optional[str]) -> Optional[int]:
     return None
 
 
-def fetch_all_students(group_id: Optional[int], q: str, batch_size: int = 500) -> List[Dict[str, Any]]:
+def fetch_all_students(group_id: Optional[int], q: str, allowed_group_ids: Optional[List[int]] = None, batch_size: int = 500) -> List[Dict[str, Any]]:
     """
     Supabase/PostgREST limit 1000-мен байланып қалмас үшін range() арқылы түгел оқимыз.
+    Енді бұл функция таңдалған бөлімге байланысты топтар тізімін (allowed_group_ids) де сүзе алады.
     """
     all_rows: List[Dict[str, Any]] = []
     offset = 0
@@ -74,16 +86,17 @@ def fetch_all_students(group_id: Optional[int], q: str, batch_size: int = 500) -
     while True:
         query = supabase.table("student").select("studentid, fullname, loginname, group_id").order("fullname")
 
+        # Егер нақты бір топ таңдалса (Админ панельдегі топ бойынша фильтр)
         if group_id:
             query = query.eq("group_id", group_id)
+        # Егер топ таңдалмай, тек жалпы бөлім таңдалса (Бөлімдегі барлық топ студенттерін шығару)
+        elif allowed_group_ids is not None:
+            query = query.in_("group_id", allowed_group_ids)
 
         if q:
-            # fullname немесе loginname ішінде бар болса (ilike)
-            # PostgREST OR синтаксисі
             qq = q.replace("%", "").strip()
             query = query.or_(f"fullname.ilike.%{qq}%,loginname.ilike.%{qq}%")
 
-        # range: inclusive
         res = query.range(offset, offset + batch_size - 1).execute()
         data = res.data or []
         all_rows.extend(data)
@@ -93,7 +106,6 @@ def fetch_all_students(group_id: Optional[int], q: str, batch_size: int = 500) -
 
         offset += batch_size
 
-        # қауіпсіздік (шексіз цикл болмас үшін)
         if offset > 200000:
             break
 
@@ -111,7 +123,6 @@ def home():
 
 @app.get("/student-login", response_class=HTMLResponse)
 def student_login_page(request: Request, msg: str = ""):
-    # Жаңа FastAPI нұсқаларына арналған қауіпсіз формат:
     return templates.TemplateResponse(request=request, name="student_login.html", context={"msg": msg})
 
 
@@ -297,7 +308,6 @@ def attend_result(request: Request):
             if c:
                 campus_name = c[0]["name"]
 
-    
     return templates.TemplateResponse(
         request=request,
         name="attend_result.html",
@@ -310,9 +320,12 @@ def attend_result(request: Request):
     )
 
 
+# -------------------- ADMIN LOGIC --------------------
+
 @app.get("/admin-login", response_class=HTMLResponse)
 def admin_login_page(request: Request, msg: str = ""):
     return templates.TemplateResponse(request=request, name="admin_login.html", context={"msg": msg})
+
 
 @app.post("/admin-login")
 def admin_login(request: Request, login: str = Form(...), password: str = Form(...)):
@@ -333,7 +346,8 @@ def admin_dashboard(
         request: Request,
         group_id: str = "",
         q: str = "",
-        day: str = ""
+        day: str = "",
+        dept: str = "IT"  # Жаңа параметр: әдепкі бойынша IT бөлімі ашылады
 ):
     if not require_admin(request):
         return RedirectResponse("/admin-login", status_code=302)
@@ -346,18 +360,26 @@ def admin_dashboard(
     else:
         selected_date = date.today()
 
-    selected_day = selected_date.isoformat()  # "2025-12-26" сияқты
+    selected_day = selected_date.isoformat()
     gid = safe_int(group_id)
 
-    groups = (
-                 supabase.table("groups")
-                 .select("group_id, group_name")
-                 .order("group_name")
-                 .execute()
-                 .data
-             ) or []
+    # 1. Базадан барлық қолжетімді топтарды оқу
+    all_groups = (
+                     supabase.table("groups")
+                     .select("group_id, group_name")
+                     .order("group_name")
+                     .execute()
+                     .data
+                 ) or []
 
-    students = fetch_all_students(group_id=gid, q=q, batch_size=500)
+    # 2. Таңдалған бөлімге бекітілген топ ID-лерін анықтау
+    allowed_group_ids = DEPARTMENT_MAP.get(dept, [])
+
+    # 3. Фильтрдегі селект ішіне тек осы бөлімнің топтарын қалдыру
+    groups = [g for g in all_groups if g["group_id"] in allowed_group_ids]
+
+    # 4. Студенттерді тек осы бөлімнің топтары бойынша сүзіп алу
+    students = fetch_all_students(group_id=gid, q=q, allowed_group_ids=allowed_group_ids, batch_size=500)
 
     att_day = (
                   supabase.table("attendance_daily")
@@ -401,6 +423,7 @@ def admin_dashboard(
             "campus_name": campus_name,
             "attend_time": attend_time
         })
+
     return templates.TemplateResponse(
         request=request,
         name="admin_dashboard.html",
@@ -412,7 +435,7 @@ def admin_dashboard(
             "today": selected_day,
             "present_count": present_count,
             "absent_count": absent_count,
-            "rows": rows
+            "rows": rows,
+            "current_dept": dept  # Шаблонға қазіргі белсенді бөлімді жібереміз
         }
     )
-
