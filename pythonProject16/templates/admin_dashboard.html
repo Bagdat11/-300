@@ -5,6 +5,29 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Admin Dashboard</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    .dept-tabs {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
+    .dept-tab {
+      padding: 8px 15px;
+      background-color: #f0f0f0;
+      color: #333;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      border: 1px solid #ccc;
+      transition: all 0.2s ease;
+    }
+    .dept-tab.active {
+      background-color: #2196F3;
+      color: white;
+      border-color: #2196F3;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -14,7 +37,18 @@
 
   <div class="container wide">
     <div class="card">
-      <h2>Бөлім: <span style="color: #2196F3;">{{ current_dept }}</span></h2>
+      
+      {% if session_dept == 'ALL' %}
+      <div class="dept-tabs">
+        <a href="/admin-dashboard?dept=БАРЛЫҚ БӨЛІМДЕР" class="dept-tab {% if current_dept == 'БАРЛЫҚ БӨЛІМДЕР' %}active{% endif %}">Барлық топтар</a>
+        <a href="/admin-dashboard?dept=IT" class="dept-tab {% if current_dept == 'IT' %}active{% endif %}">IT бөлімі</a>
+        <a href="/admin-dashboard?dept=Радио" class="dept-tab {% if current_dept == 'Радио' %}active{% endif %}">Радио</a>
+        <a href="/admin-dashboard?dept=Желілік технология" class="dept-tab {% if current_dept == 'Желілік технология' %}active{% endif %}">Желілік технология</a>
+        <a href="/admin-dashboard?dept=Құрылыс" class="dept-tab {% if current_dept == 'Құрылыс' %}active{% endif %}">Құрылыс</a>
+      </div>
+      {% endif %}
+
+      <h2>Қазіргі бөлім: <span style="color: #2196F3;">{{ current_dept }}</span></h2>
 
       <div class="stats">
         <div class="chip green">Келді: {{ present_count }}</div>
@@ -22,6 +56,8 @@
       </div>
 
       <form class="filters" method="get" action="/admin-dashboard">
+        <input type="hidden" name="dept" value="{{ current_dept }}" />
+
         <input class="input" type="date" name="day" value="{{ day }}" />
 
         <select class="input" name="group_id">
