@@ -19,9 +19,6 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
 
-ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "12345")
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
@@ -33,12 +30,21 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # -------------------- БӨЛІМДЕР МЕН ТОПТАР КАРТАСЫ --------------------
 # Қай топтың ID-і (group_id) қай бөлімге жататынын осы жерде реттейміз.
-# Төмендегі сандарды (ID) өзіңіздің базаңыздағы нақты топ ID-лерімен ауыстырыңыз!
+# Төмендегі сандарды (ID) өз базаңыздағы нақты топ ID-лерімен ауыстырыңыз!
 DEPARTMENT_MAP = {
     "IT": [1, 2, 3, 4],                 # IT бөліміне кіретін топтардың ID-лері
     "Радио": [5, 6, 7],                 # Радио бөліміне кіретін топтардың ID-лері
     "Желілік технология": [8, 9, 10],   # Желілік технология топтарының ID-лері
     "Құрылыс": [11, 12, 13]             # Құрылыс бөлімінің топ ID-лері
+}
+
+
+# -------------------- 4 БӨЛІМНІҢ АДМИНДЕРІ (ЛОГИН/ПАРОЛЬ) --------------------
+ADMIN_ACCOUNTS = {
+    "it_admin": {"password": "it123", "dept": "IT"},
+    "radio_admin": {"password": "radio123", "dept": "Радио"},
+    "network_admin": {"password": "net123", "dept": "Желілік технология"},
+    "const_admin": {"password": "build123", "dept": "Құрылыс"}
 }
 
 
@@ -76,20 +82,14 @@ def safe_int(v: Optional[str]) -> Optional[int]:
 
 
 def fetch_all_students(group_id: Optional[int], q: str, allowed_group_ids: Optional[List[int]] = None, batch_size: int = 500) -> List[Dict[str, Any]]:
-    """
-    Supabase/PostgREST limit 1000-мен байланып қалмас үшін range() арқылы түгел оқимыз.
-    Енді бұл функция таңдалған бөлімге байланысты топтар тізімін (allowed_group_ids) де сүзе алады.
-    """
     all_rows: List[Dict[str, Any]] = []
     offset = 0
 
     while True:
         query = supabase.table("student").select("studentid, fullname, loginname, group_id").order("fullname")
 
-        # Егер нақты бір топ таңдалса (Админ панельдегі топ бойынша фильтр)
         if group_id:
             query = query.eq("group_id", group_id)
-        # Егер топ таңдалмай, тек жалпы бөлім таңдалса (Бөлімдегі барлық топ студенттерін шығару)
         elif allowed_group_ids is not None:
             query = query.in_("group_id", allowed_group_ids)
 
@@ -329,15 +329,17 @@ def admin_login_page(request: Request, msg: str = ""):
 
 @app.post("/admin-login")
 def admin_login(request: Request, login: str = Form(...), password: str = Form(...)):
-    if login == ADMIN_USER and password == ADMIN_PASS:
+    if login in ADMIN_ACCOUNTS and ADMIN_ACCOUNTS[login]["password"] == password:
         request.session["is_admin"] = True
-        return RedirectResponse("/admin-dashboard", status_code=302)
+        request.session["admin_dept"] = ADMIN_ACCOUNTS[login]["dept"]
+        return RedirectResponse(f"/admin-dashboard?dept={ADMIN_ACCOUNTS[login]['dept']}", status_code=302)
     return RedirectResponse("/admin-login?msg=Қате%20логин/пароль", status_code=302)
 
 
 @app.get("/admin-logout")
 def admin_logout(request: Request):
     request.session.pop("is_admin", None)
+    request.session.pop("admin_dept", None)
     return RedirectResponse("/admin-login", status_code=302)
 
 
@@ -347,10 +349,14 @@ def admin_dashboard(
         group_id: str = "",
         q: str = "",
         day: str = "",
-        dept: str = "IT"  # Жаңа параметр: әдепкі бойынша IT бөлімі ашылады
+        dept: Optional[str] = None
 ):
     if not require_admin(request):
         return RedirectResponse("/admin-login", status_code=302)
+
+    # Админ өз бөлімінен басқа жаққа ауыса алмайтындай қауіпсіздік орнату
+    session_dept = request.session.get("admin_dept", "IT")
+    current_department = session_dept
 
     if day and day.strip():
         try:
@@ -363,7 +369,6 @@ def admin_dashboard(
     selected_day = selected_date.isoformat()
     gid = safe_int(group_id)
 
-    # 1. Базадан барлық қолжетімді топтарды оқу
     all_groups = (
                      supabase.table("groups")
                      .select("group_id, group_name")
@@ -372,13 +377,9 @@ def admin_dashboard(
                      .data
                  ) or []
 
-    # 2. Таңдалған бөлімге бекітілген топ ID-лерін анықтау
-    allowed_group_ids = DEPARTMENT_MAP.get(dept, [])
-
-    # 3. Фильтрдегі селект ішіне тек осы бөлімнің топтарын қалдыру
+    allowed_group_ids = DEPARTMENT_MAP.get(current_department, [])
     groups = [g for g in all_groups if g["group_id"] in allowed_group_ids]
-
-    # 4. Студенттерді тек осы бөлімнің топтары бойынша сүзіп алу
+    
     students = fetch_all_students(group_id=gid, q=q, allowed_group_ids=allowed_group_ids, batch_size=500)
 
     att_day = (
@@ -436,6 +437,6 @@ def admin_dashboard(
             "present_count": present_count,
             "absent_count": absent_count,
             "rows": rows,
-            "current_dept": dept  # Шаблонға қазіргі белсенді бөлімді жібереміз
+            "current_dept": current_department
         }
     )
