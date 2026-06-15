@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import math
 from datetime import datetime, date
+from zoneinfo import ZoneInfo  # 🌍 Жаңа импорт
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 
 from dotenv import load_dotenv
