@@ -247,7 +247,8 @@ def attend_submit(
     if dist_m > float(campus["radius_m"]):
         return RedirectResponse("/attend?msg=Сіз%20кампус%20аймағынан%20тыссыз", status_code=302)
 
-   from zoneinfo import ZoneInfo
+    # 🌍 ҚАЗАҚСТАН УАҚЫТ БЕЛДЕУІН ТУРАЛАУ (ПРОБЕЛДЕРІ РЕТТЕЛГЕН НҰСҚА)
+    from zoneinfo import ZoneInfo
     kz_tz = ZoneInfo("Asia/Almaty")
     now = datetime.now(kz_tz)
     today = now.date().isoformat()
