@@ -28,17 +28,19 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 
-
+# -------------------- БӨЛІМДЕР МЕН ТОПТАР КАРТАСЫ --------------------
+# Қай топтың ID-і (group_id) қай бөлімге жататыны осы жерде реттелген.
 DEPARTMENT_MAP = {
-    "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],                 # IT бөліміне кіретін топтардың ID-лері
-    "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],                 # Радио бөліміне кіретін топтардың ID-лері
-    "Желілік технология": [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 5, 6, 7, 8, 9, 10, 11],   # Желілік технология топтарының ID-лері
-    "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]             # Құрылыс бөлімінің топ ID-лері
+    "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
+    "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
+    "Желілік технология": [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 5, 6, 7, 8, 9, 10, 11],
+    "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]
 }
 
 
-
+# -------------------- БАРЛЫҚ АДМИНДЕР ТІЗІМІ (ЛОГИН/ПАРОЛЬ) --------------------
 ADMIN_ACCOUNTS = {
+    "global_admin": {"password": "super123", "dept": "ALL"},  # 👑 БАСТЫ АДМИН (Бүкіл колледжді көреді)
     "it_admin": {"password": "it123", "dept": "IT"},
     "radio_admin": {"password": "radio123", "dept": "Радио"},
     "network_admin": {"password": "net123", "dept": "Желілік технология"},
@@ -46,7 +48,7 @@ ADMIN_ACCOUNTS = {
 }
 
 
-
+# -------------------- HELPERS --------------------
 
 def haversine_m(lat1, lng1, lat2, lng2) -> float:
     r = 6371000.0
@@ -330,6 +332,11 @@ def admin_login(request: Request, login: str = Form(...), password: str = Form(.
     if login in ADMIN_ACCOUNTS and ADMIN_ACCOUNTS[login]["password"] == password:
         request.session["is_admin"] = True
         request.session["admin_dept"] = ADMIN_ACCOUNTS[login]["dept"]
+        
+        # Басты админ бірден Барлық топтарды көру бетіне өтеді
+        if ADMIN_ACCOUNTS[login]["dept"] == "ALL":
+            return RedirectResponse("/admin-dashboard?dept=БАРЛЫҚ БӨЛІМДЕР", status_code=302)
+        
         return RedirectResponse(f"/admin-dashboard?dept={ADMIN_ACCOUNTS[login]['dept']}", status_code=302)
     return RedirectResponse("/admin-login?msg=Қате%20логин/пароль", status_code=302)
 
@@ -352,9 +359,15 @@ def admin_dashboard(
     if not require_admin(request):
         return RedirectResponse("/admin-login", status_code=302)
 
-    # Админ өз бөлімінен басқа жаққа ауыса алмайтындай қауіпсіздік орнату
+    # 1. Сессиядан кім кіргенін анықтау
     session_dept = request.session.get("admin_dept", "IT")
-    current_department = session_dept
+    
+    # Егер Басты админ кірсе, ол батырмалар арқылы бөлім таңдай алады. 
+    # Кәдімгі админ тек өз бөлімінде құлыптаулы тұрады.
+    if session_dept == "ALL":
+        current_department = dept if dept else "БАРЛЫҚ БӨЛІМДЕР"
+    else:
+        current_department = session_dept
 
     if day and day.strip():
         try:
@@ -367,6 +380,7 @@ def admin_dashboard(
     selected_day = selected_date.isoformat()
     gid = safe_int(group_id)
 
+    # 2. Базадан барлық топтарды оқу
     all_groups = (
                      supabase.table("groups")
                      .select("group_id, group_name")
@@ -375,8 +389,13 @@ def admin_dashboard(
                      .data
                  ) or []
 
-    allowed_group_ids = DEPARTMENT_MAP.get(current_department, [])
-    groups = [g for g in all_groups if g["group_id"] in allowed_group_ids]
+    # 3. Басты админ бе әлде бөлім админі ме — соған қарай сүзгілеу
+    if current_department == "БАРЛЫҚ БӨЛІМДЕР":
+        allowed_group_ids = None
+        groups = all_groups
+    else:
+        allowed_group_ids = DEPARTMENT_MAP.get(current_department, [])
+        groups = [g for g in all_groups if g["group_id"] in allowed_group_ids]
     
     students = fetch_all_students(group_id=gid, q=q, allowed_group_ids=allowed_group_ids, batch_size=500)
 
@@ -435,6 +454,7 @@ def admin_dashboard(
             "present_count": present_count,
             "absent_count": absent_count,
             "rows": rows,
-            "current_dept": current_department
+            "current_dept": current_department,
+            "session_dept": session_dept
         }
     )
