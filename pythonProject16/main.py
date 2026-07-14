@@ -3,7 +3,6 @@ import math
 import requests
 from pathlib import Path
 from datetime import datetime, date
-from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form
@@ -13,9 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
 from supabase import create_client
 
-# .env жүктеу
 load_dotenv()
-# Бұл код main.py файлы қай папкада жатса, сол папканы базалық жол ретінде алады
 BASE_DIR = Path(__file__).resolve().parent
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -27,11 +24,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# Папкалар жолын автоматты түрде дұрыс анықтау
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-templates = Jinja2Templates(directory=BASE_DIR / "templates")
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# -------------------- БӨЛІМДЕР --------------------
+# --- БӨЛІМДЕР ЖӘНЕ АДМИНДЕР ---
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
     "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
@@ -39,7 +35,31 @@ DEPARTMENT_MAP = {
     "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]
 }
 
-# -------------------- ТЕЛЕГРАМ БОТ ЖӘНЕ САБАҚҚА КЕЛУ --------------------
+ADMIN_ACCOUNTS = {
+    "global_admin": {"password": "super123", "dept": "ALL"},
+    "it_admin": {"password": "it123", "dept": "IT"},
+    "radio_admin": {"password": "radio123", "dept": "Радио"},
+    "network_admin": {"password": "net123", "dept": "Желілік технология"},
+    "const_admin": {"password": "build123", "dept": "Құрылыс"}
+}
+
+# --- HELPERS ---
+def fetch_all_students(group_id, q, allowed_group_ids, batch_size=500):
+    all_rows = []
+    offset = 0
+    while True:
+        query = supabase.table("student").select("studentid, fullname, loginname, group_id").order("fullname")
+        if group_id: query = query.eq("group_id", group_id)
+        elif allowed_group_ids is not None: query = query.in_("group_id", allowed_group_ids)
+        if q: query = query.or_(f"fullname.ilike.%{q}%,loginname.ilike.%{q}%")
+        res = query.range(offset, offset + batch_size - 1).execute()
+        data = res.data or []
+        all_rows.extend(data)
+        if len(data) < batch_size: break
+        offset += batch_size
+    return all_rows
+
+# --- TELEGRAM WEBHOOK ---
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
@@ -57,26 +77,38 @@ async def bot_webhook(request: Request):
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": msg})
     return {"status": "ok"}
 
+# --- ATTENDANCE ---
 @app.post("/attend")
 def attend_submit(request: Request, campus_id: int = Form(...), lat: float = Form(...), lng: float = Form(...), device_id: str = Form(...)):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
-    
-    st = supabase.table("student").select("parent_telegram_id, fullname").eq("studentid", sid).single().execute().data
+
+    st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
     
     # Хабарлама жіберу
     if st and st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
-        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
-                      data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
+        try:
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
+                          data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
+        except: pass
     
     return RedirectResponse("/attend-result", status_code=302)
 
-# -------------------- БАСҚА ROUTE-ТАР --------------------
+# --- ADMIN DASHBOARD ---
+@app.get("/admin-dashboard")
+def admin_dashboard(request: Request, group_id: str = "", q: str = "", day: str = "", dept: Optional[str] = None):
+    if not request.session.get("is_admin"): return RedirectResponse("/admin-login", status_code=302)
+    
+    session_dept = request.session.get("admin_dept", "IT")
+    current_dept = dept if session_dept == "ALL" and dept else session_dept
+    
+    allowed_groups = None if current_dept == "ALL" else DEPARTMENT_MAP.get(current_dept, [])
+    
+    students = fetch_all_students(group_id, q, allowed_groups)
+    
+    return templates.TemplateResponse("admin_dashboard.html", {
+        "request": request, "rows": students, "current_dept": current_dept
+    })
+
 @app.get("/")
 def home(): return RedirectResponse("/student-login", status_code=302)
-
-@app.get("/student-login")
-def login_page(request: Request): return templates.TemplateResponse("student_login.html", {"request": request})
-
-@app.get("/attend-result")
-def attend_result(request: Request): return templates.TemplateResponse("attend_result.html", {"request": request})
