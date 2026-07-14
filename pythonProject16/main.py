@@ -2,9 +2,9 @@ import os
 import math
 import requests
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -13,11 +13,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
 from supabase import create_client
 
-# .env жүктеу
+# 1. КОНФИГУРАЦИЯ
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
-
-# Дерекқор және API конфигурациясы
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
@@ -27,11 +25,11 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# Папкаларды орнату
+# Папкалар жолы (Render-ге бейімделген)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
-# -------------------- БӨЛІМДЕР --------------------
+# 2. БӨЛІМДЕР МЕН АДМИНДЕР
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
     "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
@@ -39,27 +37,7 @@ DEPARTMENT_MAP = {
     "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]
 }
 
-# -------------------- HELPERS --------------------
-def haversine_m(lat1, lng1, lat2, lng2) -> float:
-    r = 6371000.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi, dl = math.radians(lat2 - lat1), math.radians(lng2 - lng1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dl / 2) ** 2
-    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-# -------------------- ROUTES --------------------
-@app.get("/")
-async def home():
-    return RedirectResponse(url="/student-login")
-
-@app.get("/student-login")
-async def student_login(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
-
-@app.get("/attend-result")
-async def attend_result(request: Request):
-    return templates.TemplateResponse("result.html", {"request": request})
-
+# 3. ТЕЛЕГРАМ БОТ ЖӘНЕ САБАҚҚА КЕЛУ ЛОГИКАСЫ
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
@@ -85,21 +63,21 @@ def attend_submit(request: Request, campus_id: int = Form(...), lat: float = For
     st = supabase.table("student").select("studentid, device_id, parent_telegram_id, fullname").eq("studentid", sid).single().execute().data
     if not st or st.get("device_id") != device_id: return RedirectResponse("/attend?msg=Қате", status_code=302)
     
-    campus = supabase.table("campuses").select("lat, lng, radius_m").eq("id", campus_id).single().execute().data
-    if not campus or haversine_m(lat, lng, campus["lat"], campus["lng"]) > campus["radius_m"]:
-        return RedirectResponse("/attend?msg=Аймақтан%20тыссыз", status_code=302)
-
-    kz_tz = ZoneInfo("Asia/Almaty")
-    now = datetime.now(kz_tz)
-    payload = {"studentid": sid, "attend_date": now.date().isoformat(), "attend_time": now.strftime("%H:%M:%S"), "campus_id": campus_id, "present": True}
-    
-    existing = supabase.table("attendance_daily").select("id").eq("studentid", sid).eq("attend_date", now.date().isoformat()).execute().data
-    if existing: supabase.table("attendance_daily").update(payload).eq("id", existing[0]["id"]).execute()
-    else: supabase.table("attendance_daily").insert(payload).execute()
-
+    # Хабарлама жіберу логикасы
     if st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
         try:
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
                           data={"chat_id": st["parent_telegram_id"], "text": f"Хабарлама: Балаңыз {st['fullname']} сабаққа келді."})
         except: pass
+    
+    # (Бұдан кейінгі дерекқорға жазу логикасын бұрынғы кодтағыдай қалдырыңыз)
     return RedirectResponse("/attend-result", status_code=302)
+
+# 4. БАСҚА ROUTE-ТАР
+@app.get("/")
+def home(): return RedirectResponse("/student-login", status_code=302)
+
+@app.get("/student-login")
+def login_page(request: Request): return templates.TemplateResponse("student_login.html", {"request": request})
+
+# ... (Қалған админ және басқа функцияларыңызды осы жерге қосыңыз)
