@@ -13,9 +13,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
 from supabase import create_client
 
-# 1. КОНФИГУРАЦИЯ
+# .env жүктеу
 load_dotenv()
+# Бұл код main.py файлы қай папкада жатса, сол папканы базалық жол ретінде алады
 BASE_DIR = Path(__file__).resolve().parent
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
@@ -25,11 +27,11 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# Папкалар жолы (Render-ге бейімделген)
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# Папкалар жолын автоматты түрде дұрыс анықтау
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
-# 2. БӨЛІМДЕР МЕН АДМИНДЕР
+# -------------------- БӨЛІМДЕР --------------------
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
     "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
@@ -37,7 +39,7 @@ DEPARTMENT_MAP = {
     "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]
 }
 
-# 3. ТЕЛЕГРАМ БОТ ЖӘНЕ САБАҚҚА КЕЛУ ЛОГИКАСЫ
+# -------------------- ТЕЛЕГРАМ БОТ ЖӘНЕ САБАҚҚА КЕЛУ --------------------
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
@@ -49,7 +51,7 @@ async def bot_webhook(request: Request):
             res = supabase.table("student").select("studentid").eq("fullname", student_name).single().execute()
             if res.data:
                 supabase.table("student").update({"parent_telegram_id": str(chat_id)}).eq("studentid", res.data["studentid"]).execute()
-                msg = f"Сәтті тіркелдіңіз! {student_name} сабаққа келгенде хабарлама келіп тұрады."
+                msg = "Сәтті тіркелдіңіз!"
             else:
                 msg = "Студент табылмады."
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": msg})
@@ -59,25 +61,22 @@ async def bot_webhook(request: Request):
 def attend_submit(request: Request, campus_id: int = Form(...), lat: float = Form(...), lng: float = Form(...), device_id: str = Form(...)):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
-
-    st = supabase.table("student").select("studentid, device_id, parent_telegram_id, fullname").eq("studentid", sid).single().execute().data
-    if not st or st.get("device_id") != device_id: return RedirectResponse("/attend?msg=Қате", status_code=302)
     
-    # Хабарлама жіберу логикасы
-    if st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
-        try:
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
-                          data={"chat_id": st["parent_telegram_id"], "text": f"Хабарлама: Балаңыз {st['fullname']} сабаққа келді."})
-        except: pass
+    st = supabase.table("student").select("parent_telegram_id, fullname").eq("studentid", sid).single().execute().data
     
-    # (Бұдан кейінгі дерекқорға жазу логикасын бұрынғы кодтағыдай қалдырыңыз)
+    # Хабарлама жіберу
+    if st and st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
+                      data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
+    
     return RedirectResponse("/attend-result", status_code=302)
 
-# 4. БАСҚА ROUTE-ТАР
+# -------------------- БАСҚА ROUTE-ТАР --------------------
 @app.get("/")
 def home(): return RedirectResponse("/student-login", status_code=302)
 
 @app.get("/student-login")
 def login_page(request: Request): return templates.TemplateResponse("student_login.html", {"request": request})
 
-# ... (Қалған админ және басқа функцияларыңызды осы жерге қосыңыз)
+@app.get("/attend-result")
+def attend_result(request: Request): return templates.TemplateResponse("attend_result.html", {"request": request})
