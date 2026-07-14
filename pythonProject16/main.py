@@ -2,8 +2,6 @@ import os
 import math
 import requests
 from pathlib import Path
-from datetime import datetime, date
-from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -13,7 +11,6 @@ from fastapi.templating import Jinja2Templates
 from supabase import create_client
 
 load_dotenv()
-BASE_DIR = Path(__file__).resolve().parent
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
@@ -24,10 +21,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# СІЗДІҢ ПАПКА ҚҰРЫЛЫМЫҢЫЗҒА САЙ ТУРА ЖОЛДАР:
+# Render-де Root Directory -> pythonProject16 болғандықтан, 
+# main.py сол папканың ішінде жатыр. Сондықтан жолды жай ғана "static" деп көрсетсе жеткілікті.
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-# --- БӨЛІМДЕР ЖӘНЕ АДМИНДЕР ---
+# --- БӨЛІМДЕР МЕН АДМИНДЕР ---
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
     "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
@@ -43,7 +43,7 @@ ADMIN_ACCOUNTS = {
     "const_admin": {"password": "build123", "dept": "Құрылыс"}
 }
 
-# --- HELPERS ---
+# --- ФУНКЦИЯЛАР ---
 def fetch_all_students(group_id, q, allowed_group_ids, batch_size=500):
     all_rows = []
     offset = 0
@@ -94,21 +94,18 @@ def attend_submit(request: Request, campus_id: int = Form(...), lat: float = For
     
     return RedirectResponse("/attend-result", status_code=302)
 
-# --- ADMIN DASHBOARD ---
+# --- ROUTES ---
+@app.get("/student-login")
+def login_page(request: Request): return templates.TemplateResponse("student_login.html", {"request": request})
+
 @app.get("/admin-dashboard")
-def admin_dashboard(request: Request, group_id: str = "", q: str = "", day: str = "", dept: Optional[str] = None):
+def admin_dashboard(request: Request, group_id: str = "", q: str = "", dept: Optional[str] = None):
     if not request.session.get("is_admin"): return RedirectResponse("/admin-login", status_code=302)
-    
     session_dept = request.session.get("admin_dept", "IT")
     current_dept = dept if session_dept == "ALL" and dept else session_dept
-    
     allowed_groups = None if current_dept == "ALL" else DEPARTMENT_MAP.get(current_dept, [])
-    
     students = fetch_all_students(group_id, q, allowed_groups)
-    
-    return templates.TemplateResponse("admin_dashboard.html", {
-        "request": request, "rows": students, "current_dept": current_dept
-    })
+    return templates.TemplateResponse("admin_dashboard.html", {"request": request, "rows": students, "current_dept": current_dept})
 
 @app.get("/")
 def home(): return RedirectResponse("/student-login", status_code=302)
