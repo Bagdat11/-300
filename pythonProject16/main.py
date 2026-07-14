@@ -1,7 +1,6 @@
 import os
 import math
 import requests
-from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -9,9 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
 from supabase import create_client
+from typing import Optional
 
 load_dotenv()
 
+# Supabase және басқа конфигурациялар
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
@@ -21,26 +22,16 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# СІЗДІҢ ПАПКА ҚҰРЫЛЫМЫҢЫЗҒА САЙ ТУРА ЖОЛДАР:
-# Render-де Root Directory -> pythonProject16 болғандықтан, 
-# main.py сол папканың ішінде жатыр. Сондықтан жолды жай ғана "static" деп көрсетсе жеткілікті.
+# ПАПКАЛАРДЫ ДҰРЫС БАЙЛАУ (Root Directory -> pythonProject16 ішінде болғандықтан)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# --- БӨЛІМДЕР МЕН АДМИНДЕР ---
+# --- БӨЛІМДЕР ЖӘНЕ АДМИНДЕР ---
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
     "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
     "Желілік технология": [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 5, 6, 7, 8, 9, 10, 11],
     "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]
-}
-
-ADMIN_ACCOUNTS = {
-    "global_admin": {"password": "super123", "dept": "ALL"},
-    "it_admin": {"password": "it123", "dept": "IT"},
-    "radio_admin": {"password": "radio123", "dept": "Радио"},
-    "network_admin": {"password": "net123", "dept": "Желілік технология"},
-    "const_admin": {"password": "build123", "dept": "Құрылыс"}
 }
 
 # --- ФУНКЦИЯЛАР ---
