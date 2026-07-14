@@ -1,9 +1,8 @@
 import os
-import math
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
@@ -12,7 +11,6 @@ from typing import Optional
 
 load_dotenv()
 
-# Supabase және басқа конфигурациялар
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
@@ -22,11 +20,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# ПАПКАЛАРДЫ ДҰРЫС БАЙЛАУ (Root Directory -> pythonProject16 ішінде болғандықтан)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+# ПАПКА ҚҰРЫЛЫМЫНА САЙ ЖОЛДАР (Root Directory бос болған жағдайда)
+app.mount("/static", StaticFiles(directory="pythonProject16/static"), name="static")
+templates = Jinja2Templates(directory="pythonProject16/templates")
 
-# --- БӨЛІМДЕР ЖӘНЕ АДМИНДЕР ---
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
     "Радио": [1, 2, 3, 4, 30, 31, 32, 33, 34, 35, 36, 37, 38, 78, 27, 28, 29],
@@ -34,7 +31,6 @@ DEPARTMENT_MAP = {
     "Құрылыс": [39, 40, 41, 42, 43, 74, 75, 76, 77, 79, 80, 81, 82]
 }
 
-# --- ФУНКЦИЯЛАР ---
 def fetch_all_students(group_id, q, allowed_group_ids, batch_size=500):
     all_rows = []
     offset = 0
@@ -50,7 +46,6 @@ def fetch_all_students(group_id, q, allowed_group_ids, batch_size=500):
         offset += batch_size
     return all_rows
 
-# --- TELEGRAM WEBHOOK ---
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
@@ -68,24 +63,18 @@ async def bot_webhook(request: Request):
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": msg})
     return {"status": "ok"}
 
-# --- ATTENDANCE ---
 @app.post("/attend")
 def attend_submit(request: Request, campus_id: int = Form(...), lat: float = Form(...), lng: float = Form(...), device_id: str = Form(...)):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
-
     st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
-    
-    # Хабарлама жіберу
     if st and st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
         try:
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
                           data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
         except: pass
-    
     return RedirectResponse("/attend-result", status_code=302)
 
-# --- ROUTES ---
 @app.get("/student-login")
 def login_page(request: Request): return templates.TemplateResponse("student_login.html", {"request": request})
 
