@@ -2,7 +2,7 @@ import os
 import math
 import requests
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
 from dotenv import load_dotenv
@@ -13,8 +13,11 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
 from supabase import create_client
 
+# .env жүктеу
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
+
+# Дерекқор және API конфигурациясы
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
@@ -23,6 +26,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
+
+# Папкаларды орнату
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
@@ -43,23 +48,32 @@ def haversine_m(lat1, lng1, lat2, lng2) -> float:
     return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 # -------------------- ROUTES --------------------
+@app.get("/")
+async def home():
+    return RedirectResponse(url="/student-login")
+
+@app.get("/student-login")
+async def student_login(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/attend-result")
+async def attend_result(request: Request):
+    return templates.TemplateResponse("result.html", {"request": request})
+
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
     if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "").strip()
-        
         if text.startswith("/register "):
             student_name = text.replace("/register ", "").strip()
             res = supabase.table("student").select("studentid").eq("fullname", student_name).single().execute()
-            
             if res.data:
                 supabase.table("student").update({"parent_telegram_id": str(chat_id)}).eq("studentid", res.data["studentid"]).execute()
                 msg = f"Сәтті тіркелдіңіз! {student_name} сабаққа келгенде хабарлама келіп тұрады."
             else:
-                msg = "Студент табылмады. Аты-жөнін базадағыдай жазыңыз."
-            
+                msg = "Студент табылмады."
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": msg})
     return {"status": "ok"}
 
@@ -83,14 +97,9 @@ def attend_submit(request: Request, campus_id: int = Form(...), lat: float = For
     if existing: supabase.table("attendance_daily").update(payload).eq("id", existing[0]["id"]).execute()
     else: supabase.table("attendance_daily").insert(payload).execute()
 
-    # Telegram хабарлама
     if st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
         try:
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
                           data={"chat_id": st["parent_telegram_id"], "text": f"Хабарлама: Балаңыз {st['fullname']} сабаққа келді."})
         except: pass
-
     return RedirectResponse("/attend-result", status_code=302)
-
-@app.get("/")
-def home(): return RedirectResponse("/student-login", status_code=302)
