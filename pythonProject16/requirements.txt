@@ -6,3 +6,4 @@ python-multipart
 itsdangerous
 supabase
 starlette
+requests
