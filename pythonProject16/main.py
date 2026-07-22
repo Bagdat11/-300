@@ -1,5 +1,6 @@
 import os
 import requests
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form, Body
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -12,19 +13,22 @@ from datetime import date
 
 load_dotenv()
 
+# main.py файлы орналасқан папканың толық жолын анықтау (Render үшін 100% қатесіз)
+BASE_DIR = Path(__file__).resolve().parent
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# Бұл жерде pythonProject16/ деген жазу алынып тасталды, 
-# өйткені Render Root Directory ретінде сол папканың ішінде тұр.
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+# Динамикалық абсолютті жолдарды қосу
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
@@ -34,6 +38,7 @@ DEPARTMENT_MAP = {
 }
 
 def fetch_all_students(group_id, q, allowed_group_ids, batch_size=500):
+    if not supabase: return []
     all_rows = []
     offset = 0
     while True:
@@ -54,28 +59,32 @@ def home():
 
 @app.get("/student-login")
 def login_page(request: Request): 
-    return templates.TemplateResponse("student_login.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="student_login.html")
 
 @app.post("/student-login")
 def student_login(request: Request, login: str = Form(...), password: str = Form(...), device_id: str = Form("")):
-    res = supabase.table("student").select("*").eq("loginname", login).execute()
-    if res.data and len(res.data) > 0:
-        student = res.data[0]
-        request.session["studentid"] = student["studentid"]
-        return RedirectResponse("/attend", status_code=302)
-    return templates.TemplateResponse("student_login.html", {"request": request, "msg": "Логин немесе құпиясөз қате!"})
+    if supabase:
+        res = supabase.table("student").select("*").eq("loginname", login).execute()
+        if res.data and len(res.data) > 0:
+            student = res.data[0]
+            request.session["studentid"] = student["studentid"]
+            return RedirectResponse("/attend", status_code=302)
+    return templates.TemplateResponse(request=request, name="student_login.html", context={"msg": "Логин немесе құпиясөз қате!"})
 
 @app.get("/attend")
 def attend_page(request: Request):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
     
-    student = supabase.table("student").select("fullname").eq("studentid", sid).single().execute().data
-    campuses = supabase.table("campus").select("*").execute().data or []
+    student_name = ""
+    campuses = []
+    if supabase:
+        st_res = supabase.table("student").select("fullname").eq("studentid", sid).single().execute()
+        if st_res.data: student_name = st_res.data.get("fullname", "")
+        campuses = supabase.table("campus").select("*").execute().data or []
     
-    return templates.TemplateResponse("attend.html", {
-        "request": request, 
-        "student_name": student["fullname"] if student else "",
+    return templates.TemplateResponse(request=request, name="attend.html", context={
+        "student_name": student_name,
         "campuses": campuses
     })
 
@@ -84,22 +93,27 @@ def attend_submit(request: Request, campus_id: int = Form(...), lat: float = For
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
     
-    st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
-    if st and st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
-        try:
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
-                          data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
-        except: pass
+    if supabase and TELEGRAM_BOT_TOKEN:
+        st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
+        if st and st.get("parent_telegram_id"):
+            try:
+                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
+                              data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
+            except: pass
     return RedirectResponse("/attend-result", status_code=302)
 
 @app.get("/attend-result")
 def attend_result(request: Request):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
-    student = supabase.table("student").select("fullname").eq("studentid", sid).single().execute().data
-    return templates.TemplateResponse("result.html", {
-        "request": request,
-        "student_name": student["fullname"] if student else "",
+    
+    student_name = ""
+    if supabase:
+        st_res = supabase.table("student").select("fullname").eq("studentid", sid).single().execute()
+        if st_res.data: student_name = st_res.data.get("fullname", "")
+        
+    return templates.TemplateResponse(request=request, name="result.html", context={
+        "student_name": student_name,
         "present": True,
         "campus_name": "Негізгі корпус",
         "attend_time": "Бүгін"
@@ -112,7 +126,7 @@ def student_logout(request: Request):
 
 @app.get("/admin-login")
 def admin_login_page(request: Request):
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="admin_login.html")
 
 @app.post("/admin-login")
 def admin_login(request: Request, login: str = Form(...), password: str = Form(...)):
@@ -120,20 +134,19 @@ def admin_login(request: Request, login: str = Form(...), password: str = Form(.
         request.session["is_admin"] = True
         request.session["admin_dept"] = "ALL"
         return RedirectResponse("/admin-dashboard", status_code=302)
-    return templates.TemplateResponse("admin_login.html", {"request": request, "msg": "Админ логині немесе құпиясөзі қате!"})
+    return templates.TemplateResponse(request=request, name="admin_login.html", context={"msg": "Админ логині немесе құпиясөзі қате!"})
 
 @app.get("/admin-dashboard")
 def admin_dashboard(request: Request, group_id: str = "", q: str = "", dept: Optional[str] = None, day: Optional[str] = None):
     if not request.session.get("is_admin"): return RedirectResponse("/admin-login", status_code=302)
-    session_dept = request.session.get("admin_dept", "IT")
+    session_dept = request.session.get("admin_dept", "ALL")
     current_dept = dept if session_dept == "ALL" and dept else session_dept
     allowed_groups = None if current_dept == "ALL" else DEPARTMENT_MAP.get(current_dept, [])
     
     students = fetch_all_students(group_id, q, allowed_groups)
-    groups = supabase.table("study_group").select("group_id, group_name").execute().data or []
+    groups = supabase.table("study_group").select("group_id, group_name").execute().data or [] if supabase else []
     
-    return templates.TemplateResponse("admin_dashboard.html", {
-        "request": request, 
+    return templates.TemplateResponse(request=request, name="admin_dashboard.html", context={
         "rows": students, 
         "current_dept": current_dept,
         "session_dept": session_dept,
@@ -157,7 +170,7 @@ def admin_logout(request: Request):
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
-    if "message" in data:
+    if "message" in data and supabase and TELEGRAM_BOT_TOKEN:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"].get("text", "").strip()
         if text.startswith("/register "):
