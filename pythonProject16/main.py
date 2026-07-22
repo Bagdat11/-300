@@ -76,12 +76,19 @@ def attend_page(request: Request):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
     
-    student_name = ""
+    student_name = "Студент"
     campuses = []
+    
     if supabase:
-        st_res = supabase.table("student").select("fullname").eq("studentid", sid).single().execute()
-        if st_res.data: student_name = st_res.data.get("fullname", "")
-        campuses = supabase.table("campus").select("*").execute().data or []
+        try:
+            st_res = supabase.table("student").select("fullname").eq("studentid", sid).execute()
+            if st_res.data and len(st_res.data) > 0:
+                student_name = st_res.data[0].get("fullname", "Студент")
+            
+            camp_res = supabase.table("campus").select("*").execute()
+            campuses = camp_res.data or []
+        except Exception as e:
+            print("DB Error:", e)
     
     return templates.TemplateResponse(request=request, name="attend.html", context={
         "student_name": student_name,
@@ -94,12 +101,12 @@ def attend_submit(request: Request, campus_id: int = Form(...), lat: float = For
     if not sid: return RedirectResponse("/student-login", status_code=302)
     
     if supabase and TELEGRAM_BOT_TOKEN:
-        st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
-        if st and st.get("parent_telegram_id"):
-            try:
+        try:
+            st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
+            if st and st.get("parent_telegram_id"):
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
                               data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
-            except: pass
+        except: pass
     return RedirectResponse("/attend-result", status_code=302)
 
 @app.get("/attend-result")
@@ -107,10 +114,13 @@ def attend_result(request: Request):
     sid = request.session.get("studentid")
     if not sid: return RedirectResponse("/student-login", status_code=302)
     
-    student_name = ""
+    student_name = "Студент"
     if supabase:
-        st_res = supabase.table("student").select("fullname").eq("studentid", sid).single().execute()
-        if st_res.data: student_name = st_res.data.get("fullname", "")
+        try:
+            st_res = supabase.table("student").select("fullname").eq("studentid", sid).execute()
+            if st_res.data and len(st_res.data) > 0:
+                student_name = st_res.data[0].get("fullname", "Студент")
+        except: pass
         
     return templates.TemplateResponse(request=request, name="result.html", context={
         "student_name": student_name,
@@ -144,7 +154,11 @@ def admin_dashboard(request: Request, group_id: str = "", q: str = "", dept: Opt
     allowed_groups = None if current_dept == "ALL" else DEPARTMENT_MAP.get(current_dept, [])
     
     students = fetch_all_students(group_id, q, allowed_groups)
-    groups = supabase.table("study_group").select("group_id, group_name").execute().data or [] if supabase else []
+    groups = []
+    if supabase:
+        try:
+            groups = supabase.table("study_group").select("group_id, group_name").execute().data or []
+        except: pass
     
     return templates.TemplateResponse(request=request, name="admin_dashboard.html", context={
         "rows": students, 
@@ -175,11 +189,14 @@ async def bot_webhook(request: Request):
         text = data["message"].get("text", "").strip()
         if text.startswith("/register "):
             student_name = text.replace("/register ", "").strip()
-            res = supabase.table("student").select("studentid").eq("fullname", student_name).single().execute()
-            if res.data:
-                supabase.table("student").update({"parent_telegram_id": str(chat_id)}).eq("studentid", res.data["studentid"]).execute()
-                msg = "Сәтті тіркелдіңіз!"
-            else:
-                msg = "Студент табылмады."
+            try:
+                res = supabase.table("student").select("studentid").eq("fullname", student_name).single().execute()
+                if res.data:
+                    supabase.table("student").update({"parent_telegram_id": str(chat_id)}).eq("studentid", res.data["studentid"]).execute()
+                    msg = "Сәтті тіркелдіңіз!"
+                else:
+                    msg = "Студент табылмады."
+            except:
+                msg = "Қате орын алды."
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": msg})
     return {"status": "ok"}
