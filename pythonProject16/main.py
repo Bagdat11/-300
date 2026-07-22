@@ -1,13 +1,14 @@
 import os
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Request, Form, Body
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.templating import Jinja2Templates
 from supabase import create_client
 from typing import Optional
+from datetime import date
 
 load_dotenv()
 
@@ -20,9 +21,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET)
 
-# ПАПКА ҚҰРЫЛЫМЫНА САЙ ЖОЛДАР (Root Directory бос болған жағдайда)
-app.mount("/static", StaticFiles(directory="pythonProject16/static"), name="static")
-templates = Jinja2Templates(directory="pythonProject16/templates")
+# Бұл жерде pythonProject16/ деген жазу алынып тасталды, 
+# өйткені Render Root Directory ретінде сол папканың ішінде тұр.
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
 DEPARTMENT_MAP = {
     "IT": [44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73],
@@ -46,6 +48,112 @@ def fetch_all_students(group_id, q, allowed_group_ids, batch_size=500):
         offset += batch_size
     return all_rows
 
+@app.get("/")
+def home(): 
+    return RedirectResponse("/student-login", status_code=302)
+
+@app.get("/student-login")
+def login_page(request: Request): 
+    return templates.TemplateResponse("student_login.html", {"request": request})
+
+@app.post("/student-login")
+def student_login(request: Request, login: str = Form(...), password: str = Form(...), device_id: str = Form("")):
+    res = supabase.table("student").select("*").eq("loginname", login).execute()
+    if res.data and len(res.data) > 0:
+        student = res.data[0]
+        request.session["studentid"] = student["studentid"]
+        return RedirectResponse("/attend", status_code=302)
+    return templates.TemplateResponse("student_login.html", {"request": request, "msg": "Логин немесе құпиясөз қате!"})
+
+@app.get("/attend")
+def attend_page(request: Request):
+    sid = request.session.get("studentid")
+    if not sid: return RedirectResponse("/student-login", status_code=302)
+    
+    student = supabase.table("student").select("fullname").eq("studentid", sid).single().execute().data
+    campuses = supabase.table("campus").select("*").execute().data or []
+    
+    return templates.TemplateResponse("attend.html", {
+        "request": request, 
+        "student_name": student["fullname"] if student else "",
+        "campuses": campuses
+    })
+
+@app.post("/attend")
+def attend_submit(request: Request, campus_id: int = Form(...), lat: float = Form(...), lng: float = Form(...), device_id: str = Form(...)):
+    sid = request.session.get("studentid")
+    if not sid: return RedirectResponse("/student-login", status_code=302)
+    
+    st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
+    if st and st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
+        try:
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
+                          data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
+        except: pass
+    return RedirectResponse("/attend-result", status_code=302)
+
+@app.get("/attend-result")
+def attend_result(request: Request):
+    sid = request.session.get("studentid")
+    if not sid: return RedirectResponse("/student-login", status_code=302)
+    student = supabase.table("student").select("fullname").eq("studentid", sid).single().execute().data
+    return templates.TemplateResponse("result.html", {
+        "request": request,
+        "student_name": student["fullname"] if student else "",
+        "present": True,
+        "campus_name": "Негізгі корпус",
+        "attend_time": "Бүгін"
+    })
+
+@app.get("/student-logout")
+def student_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/student-login", status_code=302)
+
+@app.get("/admin-login")
+def admin_login_page(request: Request):
+    return templates.TemplateResponse("admin_login.html", {"request": request})
+
+@app.post("/admin-login")
+def admin_login(request: Request, login: str = Form(...), password: str = Form(...)):
+    if login == "admin" and password == "admin123":
+        request.session["is_admin"] = True
+        request.session["admin_dept"] = "ALL"
+        return RedirectResponse("/admin-dashboard", status_code=302)
+    return templates.TemplateResponse("admin_login.html", {"request": request, "msg": "Админ логині немесе құпиясөзі қате!"})
+
+@app.get("/admin-dashboard")
+def admin_dashboard(request: Request, group_id: str = "", q: str = "", dept: Optional[str] = None, day: Optional[str] = None):
+    if not request.session.get("is_admin"): return RedirectResponse("/admin-login", status_code=302)
+    session_dept = request.session.get("admin_dept", "IT")
+    current_dept = dept if session_dept == "ALL" and dept else session_dept
+    allowed_groups = None if current_dept == "ALL" else DEPARTMENT_MAP.get(current_dept, [])
+    
+    students = fetch_all_students(group_id, q, allowed_groups)
+    groups = supabase.table("study_group").select("group_id, group_name").execute().data or []
+    
+    return templates.TemplateResponse("admin_dashboard.html", {
+        "request": request, 
+        "rows": students, 
+        "current_dept": current_dept,
+        "session_dept": session_dept,
+        "groups": groups,
+        "group_id": group_id,
+        "q": q,
+        "today": day or str(date.today()),
+        "present_count": len(students),
+        "absent_count": 0
+    })
+
+@app.post("/admin/mark-attendance")
+def mark_attendance(data: dict = Body(...)):
+    return JSONResponse({"success": True})
+
+@app.get("/admin-logout")
+def admin_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/admin-login", status_code=302)
+
 @app.post("/bot-webhook")
 async def bot_webhook(request: Request):
     data = await request.json()
@@ -62,30 +170,3 @@ async def bot_webhook(request: Request):
                 msg = "Студент табылмады."
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": chat_id, "text": msg})
     return {"status": "ok"}
-
-@app.post("/attend")
-def attend_submit(request: Request, campus_id: int = Form(...), lat: float = Form(...), lng: float = Form(...), device_id: str = Form(...)):
-    sid = request.session.get("studentid")
-    if not sid: return RedirectResponse("/student-login", status_code=302)
-    st = supabase.table("student").select("studentid, device_id, fullname, parent_telegram_id").eq("studentid", sid).single().execute().data
-    if st and st.get("parent_telegram_id") and TELEGRAM_BOT_TOKEN:
-        try:
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
-                          data={"chat_id": st["parent_telegram_id"], "text": f"Балаңыз {st['fullname']} сабаққа келді."})
-        except: pass
-    return RedirectResponse("/attend-result", status_code=302)
-
-@app.get("/student-login")
-def login_page(request: Request): return templates.TemplateResponse("student_login.html", {"request": request})
-
-@app.get("/admin-dashboard")
-def admin_dashboard(request: Request, group_id: str = "", q: str = "", dept: Optional[str] = None):
-    if not request.session.get("is_admin"): return RedirectResponse("/admin-login", status_code=302)
-    session_dept = request.session.get("admin_dept", "IT")
-    current_dept = dept if session_dept == "ALL" and dept else session_dept
-    allowed_groups = None if current_dept == "ALL" else DEPARTMENT_MAP.get(current_dept, [])
-    students = fetch_all_students(group_id, q, allowed_groups)
-    return templates.TemplateResponse("admin_dashboard.html", {"request": request, "rows": students, "current_dept": current_dept})
-
-@app.get("/")
-def home(): return RedirectResponse("/student-login", status_code=302)
